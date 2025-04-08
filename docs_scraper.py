@@ -51,6 +51,10 @@ class MayaDocsScraper:
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--log-level=3")  # Suppress most console output
         
+        # Add custom headers for Adobe sites
+        chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        chrome_options.add_argument("--accept-language=zh-CN,zh;q=0.9,en;q=0.8")
+        
         try:
             if sys.platform == "win32":
                 # Check if Chrome is installed
@@ -264,6 +268,35 @@ class MayaDocsScraper:
         
         return str(soup)
     
+    def wait_for_content(self, timeout=30):
+        """Wait for the main content to load"""
+        try:
+            # Wait for any of these selectors that might indicate the main content
+            selectors = [
+                "main",
+                "article",
+                "#main-content",
+                ".main-content",
+                "#content",
+                ".content"
+            ]
+            
+            # Create a combined selector
+            combined_selector = ", ".join(selectors)
+            
+            # Wait for any of the elements to be present
+            WebDriverWait(self.driver, timeout).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, combined_selector))
+            )
+            
+            # Additional wait for Adobe sites
+            if "adobe.com" in self.driver.current_url:
+                time.sleep(5)  # Give extra time for dynamic content to load
+                
+        except TimeoutException:
+            print("Warning: Timeout waiting for main content. Proceeding anyway...")
+            time.sleep(10)  # Fallback delay
+    
     def scrape_page_with_retry(self, url, max_retries=None, initial_delay=None):
         """Scrape a page with retry mechanism and exponential backoff"""
         if max_retries is None:
@@ -276,10 +309,39 @@ class MayaDocsScraper:
             try:
                 print(f"Scraping page: {url} (Attempt {attempt + 1}/{max_retries})")
                 self.driver.get(url)
-                time.sleep(delay)  # Wait for page to load with exponential backoff
+                
+                # Wait for content to load
+                self.wait_for_content()
                 
                 # Get the page content
-                content = self.driver.find_element(By.TAG_NAME, "body").get_attribute("outerHTML")
+                if "adobe.com" in url:
+                    print("adobe.com detected")
+                    # For Adobe help documentation, target the specific content element
+                    try:
+                        # Wait for the specific content element
+                        WebDriverWait(self.driver, 20).until(
+                            EC.presence_of_element_located((By.ID, "root_content_flex_items_position"))
+                        )
+                        # Get the main content
+                        main_content = self.driver.find_element(By.ID, "root_content_flex_items_position")
+                        content = main_content.get_attribute("outerHTML")
+                        
+                        # Remove toc elements and other navigation content
+                        soup = BeautifulSoup(content, 'html.parser')
+                        for element in soup.find_all(class_='toc'):
+                            element.decompose()
+                        for element in soup.find_all(['nav', 'aside']):
+                            element.decompose()
+                        content = str(soup)
+                    except (TimeoutException, NoSuchElementException):
+                        print("Warning: Could not find main content element, falling back to body content")
+                        content = self.driver.find_element(By.TAG_NAME, "body").get_attribute("outerHTML")
+                else:
+                    content = self.driver.find_element(By.TAG_NAME, "body").get_attribute("outerHTML")
+                
+                # Check if content is valid
+                if "无法访问此网站" in content or "ERR_" in content:
+                    raise WebDriverException("Invalid content detected")
                 
                 # Convert to markdown
                 markdown = self.h2t.handle(content)
