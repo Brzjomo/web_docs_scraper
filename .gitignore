@@ -1,0 +1,4 @@
+*.exe
+scraper_config.json
+sitemap.xml
+scraped_docs/
