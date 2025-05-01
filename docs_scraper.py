@@ -336,6 +336,20 @@ class MayaDocsScraper:
                     except (TimeoutException, NoSuchElementException):
                         print("Warning: Could not find main content element, falling back to body content")
                         content = self.driver.find_element(By.TAG_NAME, "body").get_attribute("outerHTML")
+                elif "docs.comfy.org" in url:
+                    print("docs.comfy.org detected")
+                    # For Comfy documentation, target the content-area element
+                    try:
+                        # Wait for the content-area element
+                        WebDriverWait(self.driver, 20).until(
+                            EC.presence_of_element_located((By.ID, "content-area"))
+                        )
+                        # Get the main content
+                        main_content = self.driver.find_element(By.ID, "content-area")
+                        content = main_content.get_attribute("outerHTML")
+                    except (TimeoutException, NoSuchElementException):
+                        print("Warning: Could not find content-area element, falling back to body content")
+                        content = self.driver.find_element(By.TAG_NAME, "body").get_attribute("outerHTML")
                 else:
                     content = self.driver.find_element(By.TAG_NAME, "body").get_attribute("outerHTML")
                 
