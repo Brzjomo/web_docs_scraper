@@ -24,6 +24,7 @@ class MayaDocsScraper:
         self.base_url = self.config.get("base_url", "")
         self.url_keyword = self.config["url_keyword"]
         self.output_dir = self.config.get("output_dir", "")
+        self.local_html_dir = self.config.get("local_html_dir", "")
         
         # Setup HTML to Markdown converter
         self.h2t = html2text.HTML2Text()
@@ -42,82 +43,85 @@ class MayaDocsScraper:
         
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
+        
+        # Only initialize WebDriver if not in local HTML mode
+        self.driver = None
+        if not self.local_html_dir:
+            # Setup Chrome options
+            chrome_options = Options()
+            chrome_options.add_argument("--headless")
+            chrome_options.add_argument("--disable-gpu")
+            chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-dev-shm-usage")
+            chrome_options.add_argument("--log-level=3")  # Suppress most console output
             
-        # Setup Chrome options
-        chrome_options = Options()
-        chrome_options.add_argument("--headless")
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--log-level=3")  # Suppress most console output
-        
-        # Add custom headers for Adobe sites
-        chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-        chrome_options.add_argument("--accept-language=zh-CN,zh;q=0.9,en;q=0.8")
-        
-        try:
-            if sys.platform == "win32":
-                # Check if Chrome is installed
-                chrome_paths = [
-                    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-                    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
-                ]
-                
-                chrome_installed = False
-                chrome_path = None
-                for path in chrome_paths:
-                    if os.path.exists(path):
-                        chrome_installed = True
-                        chrome_path = path
-                        print(f"Found Chrome at: {path}")
-                        break
-                
-                if not chrome_installed:
-                    raise Exception("Google Chrome not found. Please install Chrome first.")
-                
-                # Get Chrome version from registry
-                try:
-                    key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Google\Chrome\BLBeacon")
-                    version, _ = winreg.QueryValueEx(key, "version")
-                    print(f"Chrome version: {version}")
-                except Exception as e:
-                    print(f"Could not determine Chrome version from registry: {str(e)}")
+            # Add custom headers for Adobe sites
+            chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            chrome_options.add_argument("--accept-language=zh-CN,zh;q=0.9,en;q=0.8")
+            
+            try:
+                if sys.platform == "win32":
+                    # Check if Chrome is installed
+                    chrome_paths = [
+                        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+                    ]
+                    
+                    chrome_installed = False
+                    chrome_path = None
+                    for path in chrome_paths:
+                        if os.path.exists(path):
+                            chrome_installed = True
+                            chrome_path = path
+                            print(f"Found Chrome at: {path}")
+                            break
+                    
+                    if not chrome_installed:
+                        raise Exception("Google Chrome not found. Please install Chrome first.")
+                    
+                    # Get Chrome version from registry
                     try:
-                        # Fallback to command line
-                        version = subprocess.check_output(
-                            f'"{chrome_path}" --version',
-                            shell=True,
-                            stderr=subprocess.STDOUT
-                        ).decode('gbk').strip()  # Use gbk encoding for Chinese Windows
-                        print(f"Chrome version (from command): {version}")
+                        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Google\Chrome\BLBeacon")
+                        version, _ = winreg.QueryValueEx(key, "version")
+                        print(f"Chrome version: {version}")
                     except Exception as e:
-                        print(f"Could not determine Chrome version: {str(e)}")
-                
-                # Use chromedriver.exe from project directory
-                chromedriver_path = os.path.join(os.getcwd(), "chromedriver.exe")
-                if not os.path.exists(chromedriver_path):
-                    raise Exception(f"chromedriver.exe not found in project directory: {chromedriver_path}")
-                
-                print(f"Using chromedriver from: {chromedriver_path}")
-                service = Service(executable_path=chromedriver_path)
-                self.driver = webdriver.Chrome(service=service, options=chrome_options)
-            else:
-                # For other platforms
-                self.driver = webdriver.Chrome(options=chrome_options)
-                
-        except Exception as e:
-            print("\nError initializing Chrome WebDriver. Please check the following:")
-            print("1. Google Chrome is installed on your system")
-            print("2. Your Chrome version matches the WebDriver version")
-            print("3. You have the necessary permissions to run Chrome")
-            print("\nTroubleshooting steps:")
-            print("1. Make sure Chrome is installed in the default location")
-            print("2. Make sure chromedriver.exe exists in the project directory")
-            print("3. Run the script without 'sudo' (Windows doesn't use sudo)")
-            print("4. Try running the script from an administrator command prompt")
-            print("5. If problems persist, try reinstalling Chrome")
-            print(f"\nError details: {str(e)}")
-            sys.exit(1)
+                        print(f"Could not determine Chrome version from registry: {str(e)}")
+                        try:
+                            # Fallback to command line
+                            version = subprocess.check_output(
+                                f'"{chrome_path}" --version',
+                                shell=True,
+                                stderr=subprocess.STDOUT
+                            ).decode('gbk').strip()  # Use gbk encoding for Chinese Windows
+                            print(f"Chrome version (from command): {version}")
+                        except Exception as e:
+                            print(f"Could not determine Chrome version: {str(e)}")
+                    
+                    # Use chromedriver.exe from project directory
+                    chromedriver_path = os.path.join(os.getcwd(), "chromedriver.exe")
+                    if not os.path.exists(chromedriver_path):
+                        raise Exception(f"chromedriver.exe not found in project directory: {chromedriver_path}")
+                    
+                    print(f"Using chromedriver from: {chromedriver_path}")
+                    service = Service(executable_path=chromedriver_path)
+                    self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                else:
+                    # For other platforms
+                    self.driver = webdriver.Chrome(options=chrome_options)
+                    
+            except Exception as e:
+                print("\nError initializing Chrome WebDriver. Please check the following:")
+                print("1. Google Chrome is installed on your system")
+                print("2. Your Chrome version matches the WebDriver version")
+                print("3. You have the necessary permissions to run Chrome")
+                print("\nTroubleshooting steps:")
+                print("1. Make sure Chrome is installed in the default location")
+                print("2. Make sure chromedriver.exe exists in the project directory")
+                print("3. Run the script without 'sudo' (Windows doesn't use sudo)")
+                print("4. Try running the script from an administrator command prompt")
+                print("5. If problems persist, try reinstalling Chrome")
+                print(f"\nError details: {str(e)}")
+                sys.exit(1)
     
     def get_domain_from_sitemap(self):
         """Extract domain from first URL in sitemap"""
@@ -221,6 +225,132 @@ class MayaDocsScraper:
             path += '.md'
             
         return path
+    
+    def get_filename_from_path(self, filepath, base_dir):
+        """Generate filename from local file path"""
+        # Get relative path from base directory
+        rel_path = os.path.relpath(filepath, base_dir)
+        
+        # Replace path separators with underscores
+        path = rel_path.replace(os.sep, '_').replace('/', '_')
+        
+        # Remove any invalid characters (keep path-like structure for directories)
+        path = re.sub(r'[^\w\-_\. ]', '_', path)
+        
+        # Add .md extension if not present
+        if not path.endswith('.md'):
+            path += '.md'
+            
+        return path
+    
+    def get_html_files_from_local_dir(self, local_dir):
+        """Get all HTML files from local directory recursively"""
+        html_files = []
+        local_dir_path = os.path.join(os.getcwd(), local_dir)
+        
+        if not os.path.exists(local_dir_path):
+            raise Exception(f"Local HTML directory not found: {local_dir_path}")
+        
+        print(f"Scanning HTML files in: {local_dir_path}")
+        
+        # Walk through directory tree
+        for root, dirs, files in os.walk(local_dir_path):
+            # Skip certain directories (like _static, _images, etc.)
+            dirs[:] = [d for d in dirs if not d.startswith('_')]
+            
+            for file in files:
+                if file.endswith('.html'):
+                    file_path = os.path.join(root, file)
+                    html_files.append(file_path)
+        
+        print(f"Found {len(html_files)} HTML files")
+        return html_files
+    
+    def process_local_html_file(self, html_file_path, base_dir):
+        """Process a local HTML file and convert to Markdown"""
+        try:
+            # Read HTML file
+            with open(html_file_path, "r", encoding="utf-8") as f:
+                html_content = f.read()
+            
+            # Parse HTML with BeautifulSoup
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            # Find main content - try multiple selectors for Sphinx docs
+            main_content = None
+            
+            # Try different selectors (prioritize Sphinx/RTD theme selectors)
+            if soup.find('div', role='main', class_='document'):
+                main_content = soup.find('div', role='main', class_='document')
+                print(f"  Found content using selector: div[role='main'].document")
+            elif soup.find('div', class_='rst-content'):
+                main_content = soup.find('div', class_='rst-content')
+                print(f"  Found content using selector: .rst-content")
+            elif soup.find('main'):
+                main_content = soup.find('main')
+                print(f"  Found content using selector: main")
+            elif soup.find('article'):
+                main_content = soup.find('article')
+                print(f"  Found content using selector: article")
+            elif soup.find('div', class_='body'):
+                main_content = soup.find('div', class_='body')
+                print(f"  Found content using selector: .body")
+            elif soup.find('div', class_='document'):
+                main_content = soup.find('div', class_='document')
+                print(f"  Found content using selector: .document")
+            elif soup.find(id='main-content'):
+                main_content = soup.find(id='main-content')
+                print(f"  Found content using selector: #main-content")
+            elif soup.find(class_='main-content'):
+                main_content = soup.find(class_='main-content')
+                print(f"  Found content using selector: .main-content")
+            else:
+                # Use body as fallback
+                main_content = soup.find('body') or soup
+                print(f"  Using body as fallback")
+            
+            # Remove navigation, sidebar, and other non-content elements
+            for element in main_content.find_all(['nav', 'aside', 'header', 'footer']):
+                element.decompose()
+            
+            # Remove common Sphinx navigation classes
+            for element in main_content.find_all(class_=lambda x: x and (
+                'sidebar' in str(x).lower() or 
+                'navigation' in str(x).lower() or 
+                'toc' in str(x).lower() or
+                'wy-nav' in str(x).lower()
+            )):
+                element.decompose()
+            
+            # Get the HTML content
+            content_html = str(main_content)
+            
+            # Convert to markdown
+            markdown = self.h2t.handle(content_html)
+            
+            # Add original file path as comment
+            rel_path = os.path.relpath(html_file_path, base_dir)
+            markdown += f"\n\n---\n\nOriginal file: {rel_path}"
+            
+            # Generate output filename
+            filename = self.get_filename_from_path(html_file_path, base_dir)
+            
+            # Create output file path
+            output_filepath = os.path.join(self.output_dir, filename)
+            
+            # Create directory if needed
+            os.makedirs(os.path.dirname(output_filepath), exist_ok=True)
+            
+            # Save markdown file
+            with open(output_filepath, "w", encoding="utf-8") as f:
+                f.write(markdown)
+            
+            print(f"  Saved: {filename}")
+            return True
+            
+        except Exception as e:
+            print(f"  Error processing {html_file_path}: {str(e)}")
+            return False
     
     def load_progress(self):
         """Load progress from previous run"""
@@ -350,6 +480,48 @@ class MayaDocsScraper:
                     except (TimeoutException, NoSuchElementException):
                         print("Warning: Could not find content-area element, falling back to body content")
                         content = self.driver.find_element(By.TAG_NAME, "body").get_attribute("outerHTML")
+                elif "docs.godotengine.org" in url:
+                    print("docs.godotengine.org detected")
+                    # For Godot documentation (Sphinx-based), target the main content area
+                    try:
+                        # Wait for main content - try multiple common Sphinx selectors
+                        selectors = [
+                            (By.TAG_NAME, "main"),
+                            (By.TAG_NAME, "article"),
+                            (By.CLASS_NAME, "body"),
+                            (By.CLASS_NAME, "document"),
+                            (By.ID, "main-content"),
+                            (By.CLASS_NAME, "main-content")
+                        ]
+                        
+                        main_content = None
+                        for by, selector in selectors:
+                            try:
+                                WebDriverWait(self.driver, 10).until(
+                                    EC.presence_of_element_located((by, selector))
+                                )
+                                main_content = self.driver.find_element(by, selector)
+                                print(f"Found content using selector: {selector}")
+                                break
+                            except (TimeoutException, NoSuchElementException):
+                                continue
+                        
+                        if main_content:
+                            content = main_content.get_attribute("outerHTML")
+                            # Remove navigation and sidebar elements common in Sphinx docs
+                            soup = BeautifulSoup(content, 'html.parser')
+                            # Remove sidebar, navigation, and table of contents
+                            for element in soup.find_all(['nav', 'aside', 'header']):
+                                element.decompose()
+                            # Remove common Sphinx navigation classes
+                            for element in soup.find_all(class_=lambda x: x and ('sidebar' in x.lower() or 'navigation' in x.lower() or 'toc' in x.lower())):
+                                element.decompose()
+                            content = str(soup)
+                        else:
+                            raise NoSuchElementException("Could not find main content element")
+                    except (TimeoutException, NoSuchElementException):
+                        print("Warning: Could not find main content element, falling back to body content")
+                        content = self.driver.find_element(By.TAG_NAME, "body").get_attribute("outerHTML")
                 else:
                     content = self.driver.find_element(By.TAG_NAME, "body").get_attribute("outerHTML")
                 
@@ -410,7 +582,76 @@ class MayaDocsScraper:
     
     def run(self):
         """Main execution method"""
-        print("Starting Maya documentation scraping...")
+        # Check if we're in local HTML mode
+        if self.local_html_dir:
+            print("Starting local HTML to Markdown conversion...")
+            return self.run_local_html_mode()
+        else:
+            print("Starting Maya documentation scraping...")
+            return self.run_online_mode()
+    
+    def run_local_html_mode(self):
+        """Process local HTML files and convert to Markdown"""
+        try:
+            # Get all HTML files from local directory
+            html_files = self.get_html_files_from_local_dir(self.local_html_dir)
+            
+            if not html_files:
+                print("No HTML files found in the specified directory.")
+                return
+            
+            # Get base directory path
+            base_dir = os.path.join(os.getcwd(), self.local_html_dir)
+            
+            # Load progress
+            progress = self.load_progress()
+            completed_files = set(progress.get("completed_urls", []))  # Reuse same key for compatibility
+            failed_files = set(progress.get("failed_urls", []))
+            
+            success_count = 0
+            fail_count = 0
+            
+            # Process each HTML file
+            for i, html_file in enumerate(html_files):
+                # Convert to relative path for comparison
+                rel_path = os.path.relpath(html_file, base_dir)
+                
+                if rel_path in completed_files:
+                    print(f"Skipping already processed file: {rel_path}")
+                    continue
+                
+                print(f"Processing file {i + 1}/{len(html_files)}: {rel_path}")
+                
+                if self.process_local_html_file(html_file, base_dir):
+                    completed_files.add(rel_path)
+                    if rel_path in failed_files:
+                        failed_files.remove(rel_path)
+                    success_count += 1
+                else:
+                    failed_files.add(rel_path)
+                    fail_count += 1
+                
+                # Save progress periodically (every 10 files)
+                if (i + 1) % 10 == 0:
+                    self.save_progress(list(completed_files), i + 1, list(failed_files))
+            
+            # Final save
+            self.save_progress(list(completed_files), len(html_files), list(failed_files))
+            
+            print("\n" + "="*50)
+            print("Local HTML conversion completed!")
+            print(f"Successfully converted: {success_count} files")
+            print(f"Failed to convert: {fail_count} files")
+            print(f"Output directory: {self.output_dir}")
+            print("="*50)
+            
+        except Exception as e:
+            print(f"Error in local HTML mode: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    
+    def run_online_mode(self):
+        """Original online scraping mode"""
         links = self.get_links_from_sitemap()
         print(f"Found {len(links)} pages to scrape")
         
@@ -432,7 +673,8 @@ class MayaDocsScraper:
                 self.save_progress(list(completed_urls), len(links), list(remaining_failed_urls))
             else:
                 print("No failed URLs to retry.")
-            self.driver.quit()
+            if self.driver:
+                self.driver.quit()
             return
         
         print(f"Resuming from index {start_index} with {len(completed_urls)} completed URLs")
@@ -462,7 +704,8 @@ class MayaDocsScraper:
                 for url in remaining_failed_urls:
                     print(f"- {url}")
         
-        self.driver.quit()
+        if self.driver:
+            self.driver.quit()
         print("\nScraping completed!")
         print(f"Successfully scraped: {len(completed_urls)} URLs")
         print(f"Failed to scrape: {len(failed_urls)} URLs")
